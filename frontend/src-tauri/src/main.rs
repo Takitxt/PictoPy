@@ -75,6 +75,9 @@ fn on_window_event(window: &Window, event: &WindowEvent) {
             if let Some(manager) = app.get_webview_window("model-manager") {
                 let _ = manager.close();
             }
+            // Before the backend goes: an orphaned tunnel would leave an album
+            // reachable from the internet.
+            services::tunnel::shutdown(&app);
             let _ = kill_process_tree();
             app.exit(0);
         }
@@ -232,7 +235,8 @@ async fn open_model_manager(app: tauri::AppHandle) -> Result<(), String> {
         tauri::WebviewUrl::App("index.html?route=/model-manager".into()),
     )
     .title("Settings - Model Manager")
-    .inner_size(800.0, 600.0)
+    .inner_size(1023.0, 632.0)
+    .min_inner_size(1023.0, 632.0)
     .build()
     .map_err(|e| e.to_string())?;
 
@@ -284,6 +288,7 @@ fn main() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
+        .manage(services::tunnel::TunnelState::new())
         .setup(|app| {
             let resource_path = app.path().resolve("resources", BaseDirectory::Resource)?;
             println!("Resource path: {:?}", resource_path);
@@ -320,6 +325,7 @@ fn main() {
                         }
                     }
                     "quit" => {
+                        services::tunnel::shutdown(app);
                         let _ = kill_process_tree();
                         app.exit(0);
                     }
@@ -346,6 +352,9 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             services::get_resources_folder_path,
+            services::tunnel::tunnel_start,
+            services::tunnel::tunnel_stop,
+            services::tunnel::tunnel_status,
             open_model_manager,
             enable_autostart,
             disable_autostart,
@@ -354,6 +363,15 @@ fn main() {
             set_close_to_tray,
         ])
         .on_window_event(on_window_event)
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // The close handler and the tray item both stop the tunnel already,
+            // but neither covers every way the app can exit. This is the one
+            // path all of them pass through, and an ssh child outliving
+            // PictoPy would leave an album reachable from the internet.
+            if let tauri::RunEvent::Exit = event {
+                services::tunnel::shutdown(app);
+            }
+        });
 }
