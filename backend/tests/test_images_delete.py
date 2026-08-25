@@ -18,6 +18,7 @@ from app.database.images import (
     db_create_images_table,
     db_get_excluded_image_paths,
 )
+from app.database.semantic_labels import db_create_semantic_labels_table
 from app.database.yolo_mapping import db_create_YOLO_classes_table
 from app.utils.images import (
     image_util_delete_images,
@@ -42,6 +43,7 @@ def test_db(monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
     db_create_YOLO_classes_table()  # mappings (image_classes FK target)
     db_create_folders_table()  # folders (images.folder_id FK target)
     db_create_images_table()
+    db_create_semantic_labels_table()  # image_classes_display view
 
     yield db_path
 
