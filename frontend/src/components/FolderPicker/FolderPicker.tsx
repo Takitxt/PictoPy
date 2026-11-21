@@ -15,7 +15,7 @@ export const FolderPicker = () => {
   };
 
   return (
-    <div className="flex w-full gap-3">
+    <div className="flex w-full justify-end gap-3">
       <Button
         onClick={handlePickFolder}
         variant="outline"

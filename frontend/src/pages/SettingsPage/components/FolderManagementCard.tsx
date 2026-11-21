@@ -97,6 +97,7 @@ const FolderManagementCard: React.FC = () => {
   return (
     <SettingsCard
       icon={Folder}
+      iconClassName="h-10 w-10"
       title="Folder Management"
       description="Configure your photo library folders and AI settings"
       action={<FolderPicker />}

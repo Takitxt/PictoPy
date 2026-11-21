@@ -229,8 +229,8 @@ const FolderTree: React.FC<FolderTreeProps> = ({
             }}
             onContextMenu={(event) => handleContextMenu(event, folder)}
             className={cn(
-              'group/row focus-visible:border-ring relative z-10 flex w-full cursor-pointer items-center gap-2 rounded-sm border border-transparent pr-4 transition-colors duration-150 select-none focus-visible:outline-none',
-              isRoot ? 'min-h-11 py-1' : 'min-h-8',
+              'group/row focus-visible:border-ring relative z-10 flex w-full cursor-pointer items-center gap-2 overflow-hidden rounded-sm border border-transparent pr-4 transition-colors duration-150 select-none focus-visible:outline-none',
+              isRoot ? 'min-h-14 py-2' : 'min-h-11',
               isSelected && 'bg-ring/15',
               isCurrent && isSelected && 'border-ring',
               isSelected && 'text-primary',
@@ -240,7 +240,17 @@ const FolderTree: React.FC<FolderTreeProps> = ({
             {isSelected && (
               <span
                 aria-hidden="true"
-                className="bg-primary absolute top-1/2 left-0 h-6 w-0.5 -translate-y-1/2 rounded-r-full"
+                className="bg-primary absolute inset-y-0 left-0 w-0.5 rounded-r-full"
+              />
+            )}
+            {depth > 0 && (
+              <span
+                aria-hidden="true"
+                className="bg-border/60 pointer-events-none absolute top-1/2 h-px -translate-y-1/2"
+                style={{
+                  left: 20 + (depth - 1) * 16,
+                  width: 8,
+                }}
               />
             )}
             {hasChildren ? (
@@ -282,14 +292,14 @@ const FolderTree: React.FC<FolderTreeProps> = ({
               <span
                 className={cn(
                   'truncate',
-                  isRoot ? 'text-base' : 'text-sm',
+                  isRoot ? 'text-lg' : 'text-base',
                   isSelected && 'font-medium text-primary',
                 )}
               >
                 {folderName(folder.folder_path)}
               </span>
               {isRoot && (
-                <span className="text-muted-foreground truncate text-xs">
+                <span className="text-muted-foreground truncate text-sm">
                   {folder.folder_path}
                 </span>
               )}
@@ -301,8 +311,7 @@ const FolderTree: React.FC<FolderTreeProps> = ({
             >
               <span
                 className={cn(
-                  'text-muted-foreground w-28 shrink-0 text-left',
-                  isRoot ? 'text-base' : 'text-sm',
+                  'text-muted-foreground w-28 shrink-0 text-left text-base',
                 )}
               >
                 {node.totalFiles.toLocaleString()}{' '}
@@ -310,17 +319,20 @@ const FolderTree: React.FC<FolderTreeProps> = ({
               </span>
               <span className="flex w-24 shrink-0 justify-start">
                 <span className="relative flex h-7 w-7 items-center justify-center">
-                  {folder.AI_Tagging && (
-                    <span
-                      aria-hidden="true"
-                      className="flex h-6 w-6 items-center justify-center rounded-md bg-emerald-500/15 text-xs font-semibold text-emerald-600 transition-opacity group-hover/row:opacity-0 dark:text-emerald-400"
-                    >
-                      AI
-                    </span>
-                  )}
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      'flex h-6 w-6 items-center justify-center rounded-md text-xs font-semibold transition-opacity group-hover/row:opacity-0',
+                      folder.AI_Tagging
+                        ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                        : 'bg-gray-200/80 text-gray-500 dark:bg-gray-700/70 dark:text-gray-500',
+                    )}
+                  >
+                    AI
+                  </span>
                   <Switch
                     aria-label={`AI tagging for ${folderName(folder.folder_path)}`}
-                    className="pointer-events-none absolute h-4 w-7 opacity-0 transition-opacity group-hover/row:pointer-events-auto group-hover/row:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 data-[state=unchecked]:bg-gray-400 dark:data-[state=unchecked]:bg-gray-600 [&>span]:size-3 [&>span]:data-[state=checked]:translate-x-3"
+                    className="pointer-events-none absolute h-4 w-7 opacity-0 transition-opacity group-hover/row:pointer-events-auto group-hover/row:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 data-[state=unchecked]:bg-gray-400 dark:data-[state=unchecked]:bg-gray-600 [&>span]:size-3 [&>span]:!bg-gray-700 dark:[&>span]:!bg-gray-700 [&>span]:data-[state=checked]:translate-x-3"
                     checked={folder.AI_Tagging}
                     onCheckedChange={(enabled) =>
                       onSetAITagging([folder.folder_id], enabled)
@@ -336,11 +348,19 @@ const FolderTree: React.FC<FolderTreeProps> = ({
               aria-hidden={isCollapsed}
               inert={isCollapsed}
               className={cn(
-                'grid transition-[grid-template-rows] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none',
+                'relative grid transition-[grid-template-rows] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none',
                 isCollapsed ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]',
               )}
             >
-              <ul role="group" className="min-h-0 overflow-hidden">
+              <span
+                aria-hidden="true"
+                className="bg-border/60 pointer-events-none absolute top-0 bottom-0 w-px"
+                style={{ left: 20 + depth * 16 }}
+              />
+              <ul
+                role="group"
+                className="min-h-0 overflow-hidden"
+              >
                 {renderNodes(node.children, depth + 1)}
               </ul>
             </div>
@@ -352,7 +372,7 @@ const FolderTree: React.FC<FolderTreeProps> = ({
   return (
     <>
       <div className="rounded-lg border">
-        <div className="text-muted-foreground flex items-center gap-2 border-b py-2 pr-8 pl-4 text-sm font-medium">
+        <div className="text-muted-foreground flex items-center gap-2 border-b py-2.5 pr-8 pl-4 text-base font-medium">
           <span className="flex-1 pl-7">Name</span>
           <div className="flex shrink-0 items-center gap-6 pl-4">
             <span className="w-28 text-left">Files</span>
