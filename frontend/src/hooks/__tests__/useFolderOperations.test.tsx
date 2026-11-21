@@ -61,7 +61,7 @@ describe('useFolderOperations - delete folder cache invalidation', () => {
     deleteFolders.mockResolvedValueOnce({ success: true, data: {} });
     const { result, invalidateSpy } = renderUseFolderOperations();
 
-    result.current.deleteFolder('folder-1');
+    result.current.deleteFolders(['folder-1']);
 
     await waitFor(() => {
       expect(clustersKeyCalls(invalidateSpy).length).toBeGreaterThan(0);
@@ -74,7 +74,7 @@ describe('useFolderOperations - delete folder cache invalidation', () => {
     deleteFolders.mockResolvedValueOnce({ success: true, data: {} });
     const { result, invalidateSpy } = renderUseFolderOperations();
 
-    result.current.deleteFolder('folder-1');
+    result.current.deleteFolders(['folder-1']);
 
     await waitFor(() => {
       expect(memoriesKeyCalls(invalidateSpy).length).toBeGreaterThan(0);
@@ -88,7 +88,7 @@ describe('useFolderOperations - delete folder cache invalidation', () => {
     deleteFolders.mockRejectedValue(new Error('delete failed'));
     const { result, invalidateSpy } = renderUseFolderOperations();
 
-    result.current.deleteFolder('folder-1');
+    result.current.deleteFolders(['folder-1']);
 
     // autoInvalidateTags still fires ['folders'] on settle regardless of
     // outcome, so wait for that instead of an arbitrary timeout to know the
@@ -108,6 +108,19 @@ describe('useFolderOperations - delete folder cache invalidation', () => {
 
     expect(clustersKeyCalls(invalidateSpy)).toHaveLength(0);
     expect(memoriesKeyCalls(invalidateSpy)).toHaveLength(0);
+  });
+
+  it('sends every selected folder in a single delete request', async () => {
+    deleteFolders.mockResolvedValueOnce({ success: true, data: {} });
+    const { result } = renderUseFolderOperations();
+
+    result.current.deleteFolders(['folder-1', 'folder-2']);
+
+    await waitFor(() =>
+      expect(deleteFolders).toHaveBeenCalledWith({
+        folder_ids: ['folder-1', 'folder-2'],
+      }),
+    );
   });
 });
 

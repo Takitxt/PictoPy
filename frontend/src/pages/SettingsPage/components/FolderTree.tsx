@@ -6,6 +6,7 @@ import React, {
 import { ChevronRight } from 'lucide-react';
 
 import { ConfirmDialog } from '@/components/Dialog/ConfirmDialog';
+import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import { FolderDetails } from '@/types/Folder';
 import {
@@ -17,6 +18,8 @@ import {
 interface FolderTreeProps {
   folders: FolderDetails[];
   onDelete: (folderIds: string[]) => void;
+  onSetAITagging: (folderIds: string[], enabled: boolean) => void;
+  actionsPending: boolean;
 }
 
 interface RowClickEvent {
@@ -39,6 +42,8 @@ const folderName = (path: string) => {
 const FolderTree: React.FC<FolderTreeProps> = ({
   folders,
   onDelete,
+  onSetAITagging,
+  actionsPending,
 }) => {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -298,7 +303,25 @@ const FolderTree: React.FC<FolderTreeProps> = ({
                 {node.totalFiles === 1 ? 'file' : 'files'}
               </span>
               <span className="flex w-24 shrink-0 justify-start">
-                <span aria-hidden="true" className="h-7 w-7" />
+                <span className="relative flex h-7 w-7 items-center justify-center">
+                  {folder.AI_Tagging && (
+                    <span
+                      aria-hidden="true"
+                      className="flex h-6 w-6 items-center justify-center rounded-md bg-emerald-500/15 text-xs font-semibold text-emerald-600 transition-opacity group-hover/row:opacity-0 dark:text-emerald-400"
+                    >
+                      AI
+                    </span>
+                  )}
+                  <Switch
+                    aria-label={`AI tagging for ${folderName(folder.folder_path)}`}
+                    className="pointer-events-none absolute h-4 w-7 opacity-0 transition-opacity group-hover/row:pointer-events-auto group-hover/row:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 data-[state=unchecked]:bg-gray-400 dark:data-[state=unchecked]:bg-gray-600 [&>span]:size-3 [&>span]:data-[state=checked]:translate-x-3"
+                    checked={folder.AI_Tagging}
+                    onCheckedChange={(enabled) =>
+                      onSetAITagging([folder.folder_id], enabled)
+                    }
+                    disabled={actionsPending}
+                  />
+                </span>
               </span>
             </div>
           </div>
@@ -327,6 +350,7 @@ const FolderTree: React.FC<FolderTreeProps> = ({
           <span className="flex-1 pl-7">Name</span>
           <div className="flex shrink-0 items-center gap-6 pl-4">
             <span className="w-28 text-left">Files</span>
+            <span className="w-24 text-left">AI tagging</span>
           </div>
         </div>
         <div
@@ -352,6 +376,7 @@ const FolderTree: React.FC<FolderTreeProps> = ({
           <button
             type="button"
             role="menuitem"
+            disabled={actionsPending}
             onClick={() => requestDelete(menu.folderIds)}
             className={cn(menuItemClass, 'text-destructive')}
           >
@@ -368,7 +393,7 @@ const FolderTree: React.FC<FolderTreeProps> = ({
           }
         }}
         title="Delete folders?"
-        description={`${pendingDelete?.length ?? 0} folders will be removed from your library, along with their registered subfolders.`}
+        description={`${pendingDelete?.length ?? 0} folders will be removed from your library.`}
         confirmLabel="Delete"
         onConfirm={() => {
           if (pendingDelete) {

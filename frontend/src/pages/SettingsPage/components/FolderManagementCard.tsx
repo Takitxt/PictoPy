@@ -20,8 +20,8 @@ import SettingsCard from './SettingsCard';
 // Component for managing folder operations in settings
 const FolderManagementCard: React.FC = () => {
   const queryClient = useQueryClient();
-  const { folders, deleteFolder } = useFolderOperations();
-
+  const { folders, setAITagging, deleteFolder, deleteFolders, actionsPending } =
+  useFolderOperations();
   const [folderToDelete, setFolderToDelete] = useState<FolderDetails | null>(
     null,
   );
@@ -52,12 +52,25 @@ const FolderManagementCard: React.FC = () => {
   // for a folder the cached list shows as a leaf: a subfolder may have been
   // added since the list loaded, and it must not be cascaded away against the
   // setting.
-  const handleDeleteClick = (folder: FolderDetails) => {
-    const hasSubfolders = countSubfolders(folders, folder.folder_id) > 0;
-    if (hasSubfolders && !getSkipFolderDeleteConfirmationPreference()) {
+  const handleDeleteClick = (folderIds: string[]) => {
+    // Several folders: FolderTree already asked for confirmation, so delete
+    // them under the saved "Delete Subfolders" setting.
+    if (folderIds.length !== 1) {
+      deleteFolders(folderIds, !getDeleteSubfoldersPreference());
+      return;
+    }
+
+    // One folder: show the subfolder dialog only if it has subfolders and the
+    // user hasn't opted out.
+    const folder = folders.find((f) => f.folder_id === folderIds[0]);
+    const hasSubfolders = folder
+      ? countSubfolders(folders, folder.folder_id) > 0
+      : false;
+
+    if (folder && hasSubfolders && !getSkipFolderDeleteConfirmationPreference()) {
       setFolderToDelete(folder);
     } else {
-      deleteFolder(folder.folder_id, !getDeleteSubfoldersPreference());
+      deleteFolder(folderIds[0], !getDeleteSubfoldersPreference());
     }
   };
 
@@ -89,7 +102,12 @@ const FolderManagementCard: React.FC = () => {
       action={<FolderPicker />}
     >
       {folders.length > 0 ? (
-        <FolderTree folders={folders} onDelete={handleDeleteClick} />
+        <FolderTree
+          folders={folders}
+          onDelete={handleDeleteClick}
+          onSetAITagging={setAITagging}
+          actionsPending={actionsPending}
+        />
       ) : (
         <div className="py-8 text-center">
           <Folder className="mx-auto mb-3 h-12 w-12 text-gray-400" />
