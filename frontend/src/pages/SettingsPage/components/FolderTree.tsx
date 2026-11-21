@@ -32,6 +32,7 @@ interface ContextMenuState {
   x: number;
   y: number;
   folderIds: string[];
+  folderName: string;
 }
 
 const folderName = (path: string) => {
@@ -165,7 +166,12 @@ const FolderTree: React.FC<FolderTreeProps> = ({
       setAnchor(folder.folder_id);
       setCurrent(folder.folder_id);
     }
-    setMenu({ x: event.clientX, y: event.clientY, folderIds });
+    setMenu({
+      x: event.clientX,
+      y: event.clientY,
+      folderIds,
+      folderName: folderName(folder.folder_path),
+    });
   };
 
   const requestDelete = (folderIds: string[]) => {
@@ -373,6 +379,20 @@ const FolderTree: React.FC<FolderTreeProps> = ({
           onPointerDown={(event) => event.stopPropagation()}
           className="bg-popover text-popover-foreground fixed z-50 min-w-44 rounded-md border p-1 shadow-md"
         >
+          <div
+            className="text-muted-foreground truncate px-2 py-1 text-xs font-medium"
+            title={menu.folderName}
+          >
+            {menu.folderName}
+          </div>
+          <hr aria-hidden="true" className="border-border my-1 border-0 border-t" />
+          <button
+            type="button"
+            role="menuitem"
+            className={menuItemClass}
+          >
+            Show progress
+          </button>
           <button
             type="button"
             role="menuitem"
