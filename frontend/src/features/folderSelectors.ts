@@ -1,6 +1,7 @@
 import { RootState } from '@/app/store';
 import { createSelector } from '@reduxjs/toolkit';
 import { FolderDetails } from '@/types/Folder';
+import { buildFolderTree } from '@/utils/folderTree';
 
 // Basic selectors
 export const selectFolderState = (state: RootState) => state.folders;
@@ -47,22 +48,8 @@ export const selectFoldersByPathPattern = createSelector(
 );
 
 // Folder hierarchy selectors
-export const selectFolderHierarchy = createSelector(
-  [selectAllFolders],
-  (folders) => {
-    const buildHierarchy = (
-      parentId: string | null = null,
-    ): FolderDetails[] => {
-      return folders
-        .filter((folder) => folder.parent_folder_id === parentId)
-        .map((folder) => ({
-          ...folder,
-          children: buildHierarchy(folder.folder_id),
-        }));
-    };
-
-    return buildHierarchy();
-  },
+export const selectFolderTree = createSelector([selectAllFolders], (folders) =>
+  buildFolderTree(folders),
 );
 
 // Statistics selectors
