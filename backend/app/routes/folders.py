@@ -108,7 +108,11 @@ def _export_metadata(trigger: str) -> None:
         logger.error(f"Metadata export failed after {trigger}: {e}")
 
 
-def _queue_post_index_tagging_sweep(index_future: Future, app_state: State) -> None:
+def _queue_post_index_tagging_sweep(
+    index_future: Future,
+    app_state: State,
+    folder_ids: list[str] | None = None,
+) -> None:
     """
     Runs after folder indexing completes to trigger a follow-up tagging sweep.
     Prevents images indexed after an earlier tagging pass from being missed.
@@ -119,7 +123,7 @@ def _queue_post_index_tagging_sweep(index_future: Future, app_state: State) -> N
                 "Skipping post-index tagging sweep: indexing did not complete"
             )
             return
-        app_state.executor.submit(post_AI_tagging_enabled_sequence)
+        app_state.executor.submit(post_AI_tagging_enabled_sequence, folder_ids)
     except Exception as e:
         logger.error(f"Failed to queue post-index tagging sweep: {e}")
 
@@ -170,14 +174,13 @@ def post_folder_add_sequence(folder_path: str, folder_id: int):
     return True
 
 
-def post_AI_tagging_enabled_sequence():
+def post_AI_tagging_enabled_sequence(folder_ids: list[str] | None = None):
     """
     Post-enabling AI tagging sequence.
     This function is called after AI tagging is enabled for a folder.
     It processes untagged images in the database.
     """
     try:
-        db_set_tagging_completed(False)
         ensure_ai_tagging_models()
         image_util_process_untagged_images()
         cluster_util_face_clusters_sync()
@@ -202,7 +205,8 @@ def post_AI_tagging_enabled_sequence():
     finally:
         # Set even on failure. A folder that failed to tag is not still
         # tagging, and leaving the flag clear would block memories forever.
-        db_set_tagging_completed(True)
+        # Scoped to this run so a concurrent enable keeps its own loader.
+        db_set_tagging_completed(True, folder_ids)
     return True
 
 
@@ -214,6 +218,7 @@ def post_sync_folder_sequence(
     This function is called after a folder is synced.
     It processes images in the folder and updates the database.
     """
+    synced_ids: list[str] = []
     try:
         # Create folder data array
         folder_data = []
@@ -224,7 +229,8 @@ def post_sync_folder_sequence(
             folder_data.append((added_folder_path, added_folder_id, False))
 
         logger.info(f"Sync folder: {folder_data}")
-        db_set_tagging_completed(False)
+        synced_ids = [entry[1] for entry in folder_data]
+        db_set_tagging_completed(False, synced_ids)
         # Process images and videos in all folders
         image_util_process_folder_images(folder_data)
         video_util_process_folder_videos(folder_data)
@@ -248,7 +254,7 @@ def post_sync_folder_sequence(
         )
         return False
     finally:
-        db_set_tagging_completed(True)
+        db_set_tagging_completed(True, synced_ids)
     return True
 
 
@@ -320,8 +326,11 @@ def add_folder(request: AddFolderRequest, app_state: State = Depends(get_state))
         # because indexing and tagging are now on separate pools: if the AI
         # pool is free, a sweep can start (and finish, finding nothing) before
         # this folder's images are even in the DB - see the callback docstring.
+        added_folder_ids = [fid for fid, _ in folder_map.values()]
         index_future.add_done_callback(
-            lambda future: _queue_post_index_tagging_sweep(future, app_state)
+            lambda future: _queue_post_index_tagging_sweep(
+                future, app_state, added_folder_ids
+            )
         )
 
         return AddFolderResponse(
@@ -369,8 +378,18 @@ def enable_ai_tagging(
 
         updated_count = db_enable_ai_tagging_batch(request.folder_ids)
 
+        # Set synchronously: the refetch after this response must already see
+        # tagging as running, or the pool task's boot time races it and the UI
+        # never shows progress. Scoped to request.folder_ids so already-tagged
+        # folders do not show a processing loader.
+        db_set_tagging_completed(False, request.folder_ids)
+
         executor: ProcessPoolExecutor = app_state.executor
-        executor.submit(post_AI_tagging_enabled_sequence)
+        try:
+            executor.submit(post_AI_tagging_enabled_sequence, request.folder_ids)
+        except Exception:
+            db_set_tagging_completed(True, request.folder_ids)
+            raise
 
         return UpdateAITaggingResponse(
             data=UpdateAITaggingData(

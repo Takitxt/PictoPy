@@ -29,7 +29,9 @@ export const useFolderOperations = () => {
     queryKey: ['folders'],
     queryFn: getAllFolders,
     refetchInterval: folders.some(
-      (f) => f.AI_Tagging && isIndexingPending(f.indexing_status),
+      (f) =>
+        f.AI_Tagging &&
+        (isIndexingPending(f.indexing_status) || f.taggingCompleted === false),
     )
       ? 1000
       : false,

@@ -276,3 +276,22 @@
   -ms-user-select: none; /* IE10+/Edge */
   user-select: none; /* Standard */
 }
+
+@keyframes pixel-on {
+  0%,
+  100% {
+    opacity: 0.15;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+@keyframes shimmer-text {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}

@@ -1,11 +1,8 @@
-import React, {
-  useEffect,
-  useMemo,
-  useState,
-} from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 
 import { ConfirmDialog } from '@/components/Dialog/ConfirmDialog';
+import { ProcessingLoader } from '@/components/Loader/ProcessingLoader';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import { FolderDetails } from '@/types/Folder';
@@ -199,13 +196,10 @@ const FolderTree: React.FC<FolderTreeProps> = ({
       const isCurrent = current === folder.folder_id;
       const isCollapsed = collapsed.has(folder.folder_id);
       const hasChildren = node.children.length > 0;
-      const folderIcon = isCollapsed || !hasChildren
-        ? '/folder.svg'
-        : '/folder-open.svg';
-      const folderIconClass = cn(
-        'shrink-0',
-        isRoot ? 'h-6 w-6' : 'h-5 w-5',
-      );
+      const isTagging = folder.AI_Tagging && folder.taggingCompleted === false;
+      const folderIcon =
+        isCollapsed || !hasChildren ? '/folder.svg' : '/folder-open.svg';
+      const folderIconClass = cn('shrink-0', isRoot ? 'h-6 w-6' : 'h-5 w-5');
 
       return (
         <div key={folder.folder_id} role="none">
@@ -293,7 +287,7 @@ const FolderTree: React.FC<FolderTreeProps> = ({
                 className={cn(
                   'truncate',
                   isRoot ? 'text-lg' : 'text-base',
-                  isSelected && 'font-medium text-primary',
+                  isSelected && 'text-primary font-medium',
                 )}
               >
                 {folderName(folder.folder_path)}
@@ -317,27 +311,37 @@ const FolderTree: React.FC<FolderTreeProps> = ({
                 {node.totalFiles.toLocaleString()}{' '}
                 {node.totalFiles === 1 ? 'file' : 'files'}
               </span>
-              <span className="flex w-24 shrink-0 justify-start">
-                <span className="relative flex h-7 w-7 items-center justify-center">
+              <span className="flex w-40 shrink-0 justify-start">
+                <span className="relative flex h-7 w-40 items-center justify-start">
                   <span
-                    aria-hidden="true"
                     className={cn(
-                      'flex h-6 w-6 items-center justify-center rounded-md text-xs font-semibold transition-opacity group-hover/row:opacity-0',
-                      folder.AI_Tagging
-                        ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                        : 'bg-gray-200/80 text-gray-500 dark:bg-gray-700/70 dark:text-gray-500',
+                      'flex h-6 items-center transition-opacity',
+                      !isTagging &&
+                        'group-hover/row:opacity-0 group-has-[:focus-visible]/row:opacity-0',
                     )}
                   >
-                    AI
+                    {isTagging ? (
+                      <ProcessingLoader />
+                    ) : (
+                      folder.AI_Tagging && (
+                        <span className="flex h-6 items-center justify-center rounded-md bg-emerald-500/15 px-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                          Enabled
+                        </span>
+                      )
+                    )}
                   </span>
                   <Switch
                     aria-label={`AI tagging for ${folderName(folder.folder_path)}`}
-                    className="pointer-events-none absolute h-4 w-7 opacity-0 transition-opacity group-hover/row:pointer-events-auto group-hover/row:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 data-[state=unchecked]:bg-gray-400 dark:data-[state=unchecked]:bg-gray-600 [&>span]:size-3 [&>span]:!bg-gray-700 dark:[&>span]:!bg-gray-700 [&>span]:data-[state=checked]:translate-x-3"
+                    className={cn(
+                      'pointer-events-none absolute top-1/2 left-0 h-4 w-7 -translate-y-1/2 opacity-0 transition-opacity disabled:opacity-0 data-[state=unchecked]:bg-gray-400 dark:data-[state=unchecked]:bg-gray-600 [&>span]:size-3 [&>span]:!bg-gray-700 [&>span]:data-[state=checked]:translate-x-3 dark:[&>span]:!bg-gray-700',
+                      !isTagging &&
+                        'group-hover/row:pointer-events-auto group-hover/row:opacity-100 group-hover/row:disabled:opacity-50 focus-visible:pointer-events-auto focus-visible:opacity-100',
+                    )}
                     checked={folder.AI_Tagging}
                     onCheckedChange={(enabled) =>
                       onSetAITagging([folder.folder_id], enabled)
                     }
-                    disabled={actionsPending}
+                    disabled={actionsPending || isTagging}
                   />
                 </span>
               </span>
@@ -357,10 +361,7 @@ const FolderTree: React.FC<FolderTreeProps> = ({
                 className="bg-border/60 pointer-events-none absolute top-0 bottom-0 w-px"
                 style={{ left: 20 + depth * 16 }}
               />
-              <ul
-                role="group"
-                className="min-h-0 overflow-hidden"
-              >
+              <ul role="group" className="min-h-0 overflow-hidden">
                 {renderNodes(node.children, depth + 1)}
               </ul>
             </div>
@@ -376,7 +377,7 @@ const FolderTree: React.FC<FolderTreeProps> = ({
           <span className="flex-1 pl-7">Name</span>
           <div className="flex shrink-0 items-center gap-6 pl-4">
             <span className="w-28 text-left">Files</span>
-            <span className="w-24 text-left">AI tagging</span>
+            <span className="w-40 text-left">AI tagging</span>
           </div>
         </div>
         <div
@@ -405,14 +406,10 @@ const FolderTree: React.FC<FolderTreeProps> = ({
           >
             {menu.folderName}
           </div>
-          <hr aria-hidden="true" className="border-border my-1 border-0 border-t" />
-          <button
-            type="button"
-            role="menuitem"
-            className={menuItemClass}
-          >
-            Show progress
-          </button>
+          <hr
+            aria-hidden="true"
+            className="border-border my-1 border-0 border-t"
+          />
           <button
             type="button"
             role="menuitem"

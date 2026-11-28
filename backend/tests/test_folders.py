@@ -13,7 +13,7 @@ from concurrent.futures import Future, ProcessPoolExecutor
 
 
 from app.routes.folders import router as folders_router
-from app.routes.folders import _curate_memories
+from app.routes.folders import _curate_memories, post_AI_tagging_enabled_sequence
 
 from app.database.folders import (
     db_create_folders_table,
@@ -35,6 +35,7 @@ from app.database.folders import (
     db_get_all_folder_ids,
     db_get_all_folders,
     db_find_parent_folder_id,
+    db_set_tagging_completed,
 )
 from app.database.images import db_create_images_table
 from app.database.videos import db_create_videos_table
@@ -406,16 +407,21 @@ class TestFoldersAPI:
         # Indexing hasn't finished yet - no sweep queued yet
         app_state.executor.submit.assert_not_called()
 
-        # Indexing finishes -> catch-up sweep must be queued now
+        # Indexing finishes -> catch-up sweep must be queued now, scoped to the added tree
         index_future.set_result(True)
-        app_state.executor.submit.assert_called_once()
+        app_state.executor.submit.assert_called_once_with(
+            post_AI_tagging_enabled_sequence, []
+        )
 
     # ============================================================================
     # POST /folders/enable-ai-tagging - Enable AI Tagging Tests
     # ============================================================================
 
+    @patch("app.routes.folders.db_set_tagging_completed")
     @patch("app.routes.folders.db_enable_ai_tagging_batch")
-    def test_enable_ai_tagging_success(self, mock_enable_batch, client):
+    def test_enable_ai_tagging_success(
+        self, mock_enable_batch, mock_set_tagging, client
+    ):
         """Test successfully enabling AI tagging for folders."""
         mock_enable_batch.return_value = 3  # 3 folders updated
 
@@ -432,8 +438,11 @@ class TestFoldersAPI:
 
         mock_enable_batch.assert_called_once_with(["folder-1", "folder-2", "folder-3"])
 
+    @patch("app.routes.folders.db_set_tagging_completed")
     @patch("app.routes.folders.db_enable_ai_tagging_batch")
-    def test_enable_ai_tagging_single_folder(self, mock_enable_batch, client):
+    def test_enable_ai_tagging_single_folder(
+        self, mock_enable_batch, mock_set_tagging, client
+    ):
         """Test enabling AI tagging for single folder."""
         mock_enable_batch.return_value = 1
 
@@ -480,9 +489,10 @@ class TestFoldersAPI:
         assert data["detail"]["success"] is False
         assert data["detail"]["error"] == "Internal server error"
 
+    @patch("app.routes.folders.db_set_tagging_completed")
     @patch("app.routes.folders.db_enable_ai_tagging_batch")
     def test_enable_ai_tagging_background_processing_called(
-        self, mock_enable_batch, client
+        self, mock_enable_batch, mock_set_tagging, client
     ):
         """Test that background processing is triggered after enabling AI tagging."""
         mock_enable_batch.return_value = 2
@@ -493,9 +503,46 @@ class TestFoldersAPI:
 
         assert response.status_code == 200
 
-        # Verify background processing was triggered
+        # The flag is cleared before the task is submitted, so the refetch that
+        # follows this response already shows tagging as running, and scoped to
+        # the requested folders so other folders do not show a loader.
+        mock_set_tagging.assert_called_once_with(False, ["folder-1", "folder-2"])
+
+        # Verify background processing was triggered with the same folder IDs
         app_state = client.app.state
-        app_state.executor.submit.assert_called_once()
+        app_state.executor.submit.assert_called_once_with(
+            post_AI_tagging_enabled_sequence, ["folder-1", "folder-2"]
+        )
+
+    def test_enable_ai_tagging_scopes_pending_flag_to_requested_folders(
+        self, client, test_db
+    ):
+        """Enabling AI tagging on one folder must not reset taggingCompleted on others."""
+        db_insert_folders_batch(
+            [
+                ("folder-a", "/tmp/photos-a", None, 1693526400, True, True),
+                ("folder-b", "/tmp/photos-b", None, 1693526500, False, False),
+            ]
+        )
+
+        response = client.post(
+            "/folders/enable-ai-tagging", json={"folder_ids": ["folder-b"]}
+        )
+
+        assert response.status_code == 200
+        conn = sqlite3.connect(test_db)
+        try:
+            states = {
+                row[0]: (bool(row[1]), bool(row[2]))
+                for row in conn.execute(
+                    "SELECT folder_id, AI_Tagging, taggingCompleted FROM folders"
+                )
+            }
+        finally:
+            conn.close()
+
+        assert states["folder-a"] == (True, True)
+        assert states["folder-b"] == (True, False)
 
     # ============================================================================
     # POST /folders/disable-ai-tagging - Disable AI Tagging Tests
@@ -837,8 +884,11 @@ class TestFoldersAPI:
 
         assert response.status_code == 422
 
+    @patch("app.routes.folders.db_set_tagging_completed")
     @patch("app.routes.folders.db_enable_ai_tagging_batch")
-    def test_enable_ai_tagging_partial_update(self, mock_enable_batch, client):
+    def test_enable_ai_tagging_partial_update(
+        self, mock_enable_batch, mock_set_tagging, client
+    ):
         """Test enabling AI tagging when only some folders are updated."""
         mock_enable_batch.return_value = 2
 
@@ -1337,6 +1387,37 @@ class TestFoldersUnit:
         result = db_disable_ai_tagging_batch(["tmp"])
         assert result == 1
         mock_update_batch.assert_called_once_with(["tmp"], False)
+
+    def test_db_set_tagging_completed_scoped_only_updates_ai_tagged_folders(
+        self, test_db
+    ):
+        db_insert_folders_batch(
+            [
+                ("ai-on-target", "/tmp/a", None, 1, True, False),
+                ("ai-on-other", "/tmp/b", None, 1, True, False),
+                ("ai-off", "/tmp/c", None, 1, False, False),
+            ]
+        )
+
+        updated = db_set_tagging_completed(True, ["ai-on-target", "ai-off"])
+        assert updated == 1
+
+        conn = sqlite3.connect(test_db)
+        try:
+            flags = {
+                row[0]: bool(row[1])
+                for row in conn.execute(
+                    "SELECT folder_id, taggingCompleted FROM folders"
+                )
+            }
+        finally:
+            conn.close()
+
+        assert flags == {
+            "ai-on-target": True,
+            "ai-on-other": False,
+            "ai-off": False,
+        }
 
     def test_db_get_folder_ids_by_path_prefix(self, test_db):
         conn = sqlite3.connect(test_db)

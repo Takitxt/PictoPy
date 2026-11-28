@@ -6,13 +6,13 @@ import FolderTree from '../FolderTree';
 const folder = (
   folder_id: string,
   folder_path: string,
-  counts: Pick<FolderDetails, 'image_count' | 'video_count'> = {},
+  overrides: Partial<FolderDetails> = {},
 ): FolderDetails => ({
   folder_id,
   folder_path,
   last_modified_time: 0,
   AI_Tagging: false,
-  ...counts,
+  ...overrides,
 });
 
 const folders = [
@@ -200,5 +200,143 @@ describe('FolderTree', () => {
 
     expect(onSetAITagging).toHaveBeenCalledWith(['2024'], true);
     expect(row).toHaveAttribute('aria-selected', 'false');
+  });
+
+  it('shows the processing loader while AI tagging is running', () => {
+    renderTree({
+      folders: [
+        folder('photos', 'C:\\Photos', {
+          AI_Tagging: true,
+          taggingCompleted: false,
+        }),
+      ],
+    });
+
+    expect(screen.getByText('Processing')).toBeInTheDocument();
+    expect(screen.queryByText('Enabled')).not.toBeInTheDocument();
+  });
+
+  it('disables the row switch while AI tagging is running', () => {
+    renderTree({
+      folders: [
+        folder('photos', 'C:\\Photos', {
+          AI_Tagging: true,
+          taggingCompleted: false,
+        }),
+      ],
+    });
+
+    expect(within(rowFor('Photos')).getByRole('switch')).toBeDisabled();
+  });
+
+  it('shows Enabled once AI tagging completes', () => {
+    renderTree({
+      folders: [
+        folder('photos', 'C:\\Photos', {
+          AI_Tagging: true,
+          taggingCompleted: true,
+        }),
+      ],
+    });
+
+    expect(screen.getByText('Enabled')).toBeInTheDocument();
+    expect(screen.queryByText('Processing')).not.toBeInTheDocument();
+  });
+
+  it('shows Enabled when the completion flag is missing', () => {
+    renderTree({
+      folders: [folder('photos', 'C:\\Photos', { AI_Tagging: true })],
+    });
+
+    expect(screen.getByText('Enabled')).toBeInTheDocument();
+    expect(screen.queryByText('Processing')).not.toBeInTheDocument();
+  });
+
+  it('shows neither status when AI tagging is off', () => {
+    renderTree();
+
+    expect(screen.queryByText('Processing')).not.toBeInTheDocument();
+    expect(screen.queryByText('Enabled')).not.toBeInTheDocument();
+  });
+
+  it('keeps the switch hidden and loader visible while AI tagging is running', () => {
+    renderTree({
+      folders: [
+        folder('photos', 'C:\\Photos', {
+          AI_Tagging: true,
+          taggingCompleted: false,
+        }),
+      ],
+    });
+
+    const row = rowFor('Photos');
+    const toggle = within(row).getByRole('switch');
+    const loaderWrapper = within(row)
+      .getByText('Processing')
+      .closest('span')?.parentElement;
+
+    expect(toggle).toBeDisabled();
+    expect(toggle).toHaveClass(
+      'opacity-0',
+      'disabled:opacity-0',
+      'pointer-events-none',
+    );
+    expect(toggle).not.toHaveClass(
+      'group-hover/row:opacity-100',
+      'focus-visible:opacity-100',
+    );
+    expect(loaderWrapper).not.toHaveClass('group-hover/row:opacity-0');
+  });
+
+  it('keeps disabled switches hidden when not hovered during pending actions', () => {
+    renderTree({
+      actionsPending: true,
+      folders: [
+        folder('photos', 'C:\\Photos', {
+          AI_Tagging: true,
+          taggingCompleted: true,
+        }),
+      ],
+    });
+
+    const toggle = within(rowFor('Photos')).getByRole('switch');
+    expect(toggle).toBeDisabled();
+    expect(toggle).toHaveClass('opacity-0', 'disabled:opacity-0');
+    expect(toggle).toHaveClass('group-hover/row:disabled:opacity-50');
+  });
+
+  it('shows processing only on the folder still tagging, not other enabled folders', () => {
+    renderTree({
+      folders: [
+        folder('photos', 'C:\\Photos', {
+          AI_Tagging: true,
+          taggingCompleted: true,
+        }),
+        folder('2024', 'C:\\Photos\\2024', {
+          AI_Tagging: true,
+          taggingCompleted: false,
+        }),
+        folder('archive', 'C:\\Photos\\Archive', {
+          AI_Tagging: false,
+        }),
+      ],
+    });
+
+    expect(within(rowFor('Photos')).getByText('Enabled')).toBeInTheDocument();
+    expect(
+      within(rowFor('Photos')).queryByText('Processing'),
+    ).not.toBeInTheDocument();
+
+    expect(within(rowFor('2024')).getByText('Processing')).toBeInTheDocument();
+    expect(
+      within(rowFor('2024')).queryByText('Enabled'),
+    ).not.toBeInTheDocument();
+
+    expect(
+      within(rowFor('Archive')).queryByText('Processing'),
+    ).not.toBeInTheDocument();
+    expect(
+      within(rowFor('Archive')).queryByText('Enabled'),
+    ).not.toBeInTheDocument();
   });
 });

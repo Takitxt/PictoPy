@@ -34,8 +34,7 @@ def db_create_folders_table() -> None:
     try:
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
-        cursor.execute(
-            """
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS folders (
                 folder_id TEXT PRIMARY KEY,
                 parent_folder_id TEXT,
@@ -46,8 +45,7 @@ def db_create_folders_table() -> None:
                 indexing_status TEXT DEFAULT 'not_started',
                 FOREIGN KEY (parent_folder_id) REFERENCES folders(folder_id) ON DELETE CASCADE
             )
-            """
-        )
+            """)
         conn.commit()
     finally:
         if conn is not None:
@@ -460,8 +458,7 @@ def db_get_all_folder_details() -> (
         # joining both onto folders at once. Joining both multiplies the rows
         # (a folder with 3 images and 4 videos yields 12 join rows), so the old
         # COUNT(DISTINCT ...) query scanned images x videos rows per folder.
-        cursor.execute(
-            """
+        cursor.execute("""
             SELECT
                 f.folder_id,
                 f.folder_path,
@@ -482,8 +479,7 @@ def db_get_all_folder_details() -> (
                 FROM videos GROUP BY folder_id
             ) v ON v.folder_id = f.folder_id
             ORDER BY f.folder_path
-            """
-        )
+            """)
         return cursor.fetchall()
     finally:
         conn.close()
@@ -511,22 +507,34 @@ def db_get_direct_child_folders(parent_folder_id: str) -> List[Tuple[str, str]]:
         conn.close()
 
 
-def db_set_tagging_completed(completed: bool) -> int:
+def db_set_tagging_completed(
+    completed: bool, folder_ids: Optional[List[str]] = None
+) -> int:
     """
-    Mark every AI-tagged folder as finished tagging, or back to pending.
+    Mark AI-tagged folders as finished tagging, or back to pending.
 
-    The column exists on the folders table but nothing used to write it after
-    insert, so anything reading it saw every AI-tagged folder as permanently
-    mid-tagging. The tagging sequences now clear it on entry and set it on
-    exit. Returns the number of folders updated.
+    Pass folder_ids to flag only the folders a run actually covers; omitting it
+    touches every AI-tagged folder. Scoping matters: the UI shows a loader for
+    each pending folder, so a global pending flag makes unrelated folders spin.
+    Returns the number of folders updated.
     """
+    if folder_ids is not None and not folder_ids:
+        return 0
+
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
     try:
-        cursor.execute(
-            "UPDATE folders SET taggingCompleted = ? WHERE AI_Tagging = 1",
-            (1 if completed else 0,),
-        )
+        if folder_ids is None:
+            cursor.execute(
+                "UPDATE folders SET taggingCompleted = ? WHERE AI_Tagging = 1",
+                (1 if completed else 0,),
+            )
+        else:
+            placeholders = ",".join("?" for _ in folder_ids)
+            cursor.execute(
+                f"UPDATE folders SET taggingCompleted = ? WHERE AI_Tagging = 1 AND folder_id IN ({placeholders})",
+                (1 if completed else 0, *folder_ids),
+            )
         conn.commit()
         return cursor.rowcount
     except sqlite3.Error as e:
